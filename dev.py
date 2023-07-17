@@ -164,7 +164,7 @@ rich_click.OPTION_GROUPS = {
         {
             "name": "Options",
             "options": [
-                "--help", "--build-dir", "--no-build", "--install-prefix"],
+                "--help", "--build-dir", "--no-build", "--install-prefix", "--watch"],
         },
     ],
 
@@ -244,6 +244,9 @@ CONTEXT = UnifiedContext({
         ['--install-prefix'], default=None, metavar='INSTALL_DIR',
         help=(":wrench: Relative path to the install directory."
               " Default is <build-dir>-install.")),
+    'watch': Option(
+        ["--watch", "-w"], default=False, is_flag=True,
+        help=(":wrench: Watch the folder and build when changes are detected.")),
 })
 
 
@@ -650,6 +653,25 @@ class Build(Task):
         )
         openblas_support.make_init(scipy_path)
         print('OpenBLAS copied')
+        
+    @staticmethod
+    def most_recent_change(path):
+        EXCLUDE_LIST = [
+            ".gitignore",
+            "meson-install.log",
+            "install-log.txt",
+            ".ninja_log",
+            "version.py",
+        ]
+        return max([(file, os.stat(os.path.join(dirpath, file)).st_mtime) for dirpath, dirnames, files in os.walk(path) for file in files if file not in EXCLUDE_LIST], key=lambda x: x[1])
+    
+    @classmethod
+    def run_build(cls, dirs, args):
+        env = cls.setup_build(dirs, args)
+        cls.build_project(dirs, args, env)
+        cls.install_project(dirs, args)
+        if args.win_cp_openblas and platform.system() == 'Windows':
+            cls.copy_openblas(dirs)
 
     @classmethod
     def run(cls, add_path=False, **kwargs):
@@ -662,11 +684,18 @@ class Build(Task):
         if args.no_build:
             print("Skipping build")
         else:
-            env = cls.setup_build(dirs, args)
-            cls.build_project(dirs, args, env)
-            cls.install_project(dirs, args)
-            if args.win_cp_openblas and platform.system() == 'Windows':
-                cls.copy_openblas(dirs)
+            if args.watch:
+                from time import sleep
+                previous = 0
+                while True:
+                    sleep(.1)
+                    latest = cls.most_recent_change(dirs.root)
+                    if latest != previous:
+                        print(latest)
+                        cls.run_build(dirs, args)
+                    previous = latest
+            else:
+                cls.run_build(dirs, args)
 
         # add site to sys.path
         if add_path:
