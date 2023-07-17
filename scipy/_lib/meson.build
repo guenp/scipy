@@ -116,6 +116,7 @@ python_sources = [
   'decorator.py',
   'deprecation.py',
   'doccer.py',
+  'telemetry.py',
   'uarray.py',
 ]
 
